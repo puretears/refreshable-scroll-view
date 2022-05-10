@@ -62,8 +62,7 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
       ZStack(alignment: .top) {
         if topRefreshable, let progress = progress {
           progress(state)
-            .frame(width: threshold, height: threshold).fixedSize()
-            .border(Color.green)
+            .frame(height: threshold).fixedSize()
             .offset(y: (state == .loading) ? -scrollOffset : -threshold)
         }
         
@@ -84,7 +83,6 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
           (state == .loading) ? -threshold + scrollOffset : 0
         })
       }
-      .border(Color.red, width: 2)
     }
     .backgroundPreferenceValue(ContentPrefKey.self) { (data: ContentPrefKey.Value) in
       GeometryReader { proxy -> FixedView in
@@ -102,7 +100,6 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
     .onPreferenceChange(TopPrefKey.self) { (data: TopPrefKey.Value) in
       refreshing(values: data)
     }
-    .border(Color.blue)
   }
 }
 
