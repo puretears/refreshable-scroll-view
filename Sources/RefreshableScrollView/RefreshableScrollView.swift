@@ -28,6 +28,8 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
   let progress: ProgressBuilder?
   let bottomProgress: BottomProgressBuilder?
   
+  let bottomPadding: CGFloat
+  
   let content: () -> Content
   
   @State private var topScrollOffset: CGFloat = 0
@@ -44,6 +46,7 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
     onBottomRefresh: @escaping OnRefresh,
     @ViewBuilder progress: @escaping ProgressBuilder,
     @ViewBuilder bottomProgress: @escaping BottomProgressBuilder,
+    bottomPadding: CGFloat = 0,
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.topRefreshable = topRefreshable
@@ -56,6 +59,7 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
     self.progress = progress
     self.bottomProgress = bottomProgress
     
+    self.bottomPadding = bottomPadding
     self.content = content
   }
   
@@ -87,6 +91,7 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
         })
         // End VStack
       }
+      .padding(.bottom, bottomPadding)
       // End ZStack(alignment: .top)
     }
     .frame(alignment: .top)
@@ -225,6 +230,7 @@ public extension RefreshableScrollView where BottomProgress == EmptyView {
     onBottomRefresh = nil
     self.progress = progress
     bottomProgress = nil
+    bottomPadding = 0
     self.content = content
   }
 }
@@ -234,6 +240,7 @@ public extension RefreshableScrollView where Progress == EmptyView {
   init(
     threshold: CGFloat = 68,
     onBottomRefresh: @escaping OnRefresh,
+    bottomPadding: CGFloat = 0,
     @ViewBuilder bottomProgress: @escaping BottomProgressBuilder,
     @ViewBuilder content: @escaping () -> Content
   ) {
@@ -244,6 +251,7 @@ public extension RefreshableScrollView where Progress == EmptyView {
     self.onBottomRefresh = onBottomRefresh
     progress = nil
     self.bottomProgress = bottomProgress
+    self.bottomPadding = bottomPadding
     self.content = content
   }
 }
