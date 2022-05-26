@@ -6,14 +6,16 @@ public enum RefreshState {
   case normal   // Wait for scrolling
   case primed   // Scroll beyond the threshold
   case loading  // Do the refreshing
+  case failed
+  case successed
 }
 
 public struct RefreshableScrollView<Content: View, Progress: View, BottomProgress: View>: View {
-  public typealias RefreshComplete = () -> Void
+//  public typealias RefreshComplete = () -> Void
   /// `RefreshComplete` passed to `OnRefresh` should be called by the user.
-  public typealias OnRefresh = (@escaping RefreshComplete) -> Void
-  public typealias ProgressBuilder = (RefreshState) -> Progress
-  public typealias BottomProgressBuilder = (RefreshState) -> BottomProgress
+  public typealias OnRefresh = () async throws -> Void
+  public typealias ProgressBuilder = (RefreshState, CGFloat) -> Progress
+  public typealias BottomProgressBuilder = (RefreshState, CGFloat) -> BottomProgress
   
   let topRefreshable: Bool
   private let bottomRefreshable: Bool
@@ -28,7 +30,8 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
   
   let content: () -> Content
   
-  @State private var scrollOffset: CGFloat = 0
+  @State private var topScrollOffset: CGFloat = 0
+  @State private var bottomScrollOffset: CGFloat = 0
   @State private var state = RefreshState.normal
   @State private var bottomState = RefreshState.normal
   @State private var contentBound: CGRect = .zero
@@ -58,32 +61,35 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
   
   public var body: some View {
     ScrollView(.vertical) {
-      
       ZStack(alignment: .top) {
         if topRefreshable, let progress = progress {
-          progress(state)
-            .frame(height: threshold).fixedSize()
-            .offset(y: (state == .loading) ? -scrollOffset : -threshold)
+          progress(state, topScrollOffset)
+            .frame(height: threshold)
+            .offset(y: (state == .loading || state == .successed || state == .failed) ? -topScrollOffset : -threshold)
         }
         
         MovingView()
         
         VStack {
           content()
-            .anchorPreference(
-              key: ContentPrefKey.self, value: .bounds,
-              transform: { [ContentPrefData(vType: .contentView, bound: $0)] }
-            )
           
           if bottomRefreshable, let bottomProgress = bottomProgress {
-            bottomProgress(bottomState)
+            bottomProgress(bottomState, bottomScrollOffset)
+              .frame(height: threshold)
           }
         }
+        .anchorPreference(
+          key: ContentPrefKey.self, value: .bounds,
+          transform: { [ContentPrefData(vType: .contentView, bound: $0)] }
+        )
         .alignmentGuide(.top, computeValue: { _ in
-          (state == .loading) ? -threshold + scrollOffset : 0
+          (state == .loading || state == .successed || state == .failed) ? -threshold + topScrollOffset : 0
         })
+        // End VStack
       }
+      // End ZStack(alignment: .top)
     }
+    .frame(alignment: .top)
     .backgroundPreferenceValue(ContentPrefKey.self) { (data: ContentPrefKey.Value) in
       GeometryReader { proxy -> FixedView in
         if bottomRefreshable {
@@ -107,37 +113,77 @@ extension RefreshableScrollView {
   func refreshing(values: TopPrefKey.Value) {
     let movingBound = values.first { $0.vType == .movingView }?.bound ?? .zero
     let fixedBound = values.first { $0.vType == .fixedView }?.bound ?? .zero
-    scrollOffset = movingBound.minY - fixedBound.minY
+    let currentScrollOffset = movingBound.minY - fixedBound.minY
+    
+    topScrollOffset = currentScrollOffset
+    bottomScrollOffset = currentScrollOffset
     
     if topRefreshable, let onRefresh = onRefresh {
       if state != .loading {
-        if scrollOffset > threshold && state == .normal {
+        if topScrollOffset > threshold && state == .normal {
           state = .primed
           UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        else if scrollOffset < threshold && state == .primed {
+        else if topScrollOffset < threshold && state == .primed {
           state = .loading
           
-          onRefresh {
-            withAnimation { state = .normal }
+          Task {
+            do {
+              try await onRefresh()
+              withAnimation(.default) { state = .successed }
+              withAnimation(.default.delay(0.3)) { state = .normal }
+            }
+            catch {
+              withAnimation { state = .failed }
+              withAnimation(.default.delay(0.4)) { state = .normal }
+            }
           }
         }
       }
     }
     
+    /* Trigger the bottom refresh manually.
     if bottomRefreshable, contentBound.height > 0, let onBottomRefresh = onBottomRefresh {
+      bottomScrollOffset += (contentBound.height - fixedBound.height)
+      
       if bottomState != .loading {
-        print("TH: \(-(contentBound.height - fixedBound.height + threshold))")
-        print("OF: \(scrollOffset)")
-        if scrollOffset < -(contentBound.height - fixedBound.height + threshold) && bottomState == .normal {
+        if bottomScrollOffset < -threshold / 2 && bottomState == .normal {
           bottomState = .primed
           UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        else if scrollOffset > -(contentBound.height - fixedBound.height + threshold) && bottomState == .primed {
+        else if bottomScrollOffset >= 0 && bottomState == .primed {
           bottomState = .loading
-          
-          onBottomRefresh {
-            withAnimation { bottomState = .normal }
+
+          Task {
+            do {
+              try await onBottomRefresh()
+              withAnimation { bottomState = .successed }
+              withAnimation(.default.delay(0.5)) { bottomState = .normal }
+            }
+            catch {
+              withAnimation { bottomState = .failed }
+              withAnimation(.default.delay(0.5)) { bottomState = .normal }
+            }
+          }
+        }
+      }
+    }
+    */
+    if bottomRefreshable, contentBound.height > 0, let onBottomRefresh = onBottomRefresh {
+      if bottomState != .loading {
+        if bottomScrollOffset <= -(contentBound.height - fixedBound.height) * 0.5 {
+          bottomState = .loading
+
+          Task {
+            do {
+              try await onBottomRefresh()
+              withAnimation { bottomState = .successed }
+              withAnimation(.default.delay(0.5)) { bottomState = .normal }
+            }
+            catch {
+              withAnimation { bottomState = .failed }
+              withAnimation(.default.delay(0.5)) { bottomState = .normal }
+            }
           }
         }
       }
@@ -201,39 +247,3 @@ public extension RefreshableScrollView where Progress == EmptyView {
     self.content = content
   }
 }
-
-#if compiler(>=5.5)
-@available(iOS 15.0, *)
-public extension RefreshableScrollView {
-  init(
-    topRefreshable: Bool = true,
-    bottomRefreshable: Bool = false,
-    threshold: CGFloat = 68,
-    onRefresh: @escaping @Sendable () async -> Void,
-    onBottomRefresh: @escaping @Sendable () async -> Void,
-    @ViewBuilder progress: @escaping ProgressBuilder,
-    @ViewBuilder bottomProgress: @escaping BottomProgressBuilder,
-    @ViewBuilder content: @escaping () -> Content
-  ) {
-    self.init(
-      topRefreshable: topRefreshable,
-      bottomRefreshable: bottomRefreshable,
-      threshold: threshold,
-      onRefresh: { refreshComplete in
-        Task {
-          await onRefresh()
-          refreshComplete()
-        }
-      },
-      onBottomRefresh: { refreshComplete in
-        Task {
-          await onBottomRefresh()
-          refreshComplete()
-        }
-      },
-      progress: progress,
-      bottomProgress: bottomProgress,
-      content: content)
-  }
-}
-#endif
