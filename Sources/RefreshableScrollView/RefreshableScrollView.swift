@@ -92,6 +92,7 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
         })
         // End VStack
       }
+      .ignoresSafeArea(edges: .bottom)
       .padding(.bottom, bottomPadding)
       // End ZStack(alignment: .top)
     }
