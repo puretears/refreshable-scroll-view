@@ -64,7 +64,7 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
   }
   
   public var body: some View {
-    ScrollView(.vertical) {
+    ScrollView(.vertical, showsIndicators: false) {
       ZStack(alignment: .top) {
         if topRefreshable, let progress = progress {
           progress(state, topScrollOffset)
