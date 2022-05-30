@@ -79,8 +79,7 @@ public struct RefreshableScrollView<Content: View, Progress: View, BottomProgres
           
           if bottomRefreshable, let bottomProgress = bottomProgress {
             bottomProgress(bottomState, bottomScrollOffset)
-              .frame(height: threshold)
-              .border(Color.yellow, width: 2)
+//              .frame(height: threshold)
           }
         }
         .anchorPreference(
